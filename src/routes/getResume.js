@@ -39,6 +39,7 @@ const handleUpload = (req, res, next) => {
 
 // POST /uploadResume - Upload and store resume directly in MongoDB
 router.post("/", handleUpload, postresume);
+router.post("/upload", handleUpload, postresume);
 
 // GET /uploadResume - Get list of all uploaded resumes
 router.get("/", getAllResumes);

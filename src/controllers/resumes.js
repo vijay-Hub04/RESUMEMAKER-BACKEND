@@ -26,11 +26,7 @@ const upload = multer({
   },
 });
 
-/**
- * @desc    Upload and store resume PDF/DOC directly in MongoDB
- * @route   POST /uploadResume
- * @access  Public
- */
+
 const postresume = async (req, res) => {
   try {
     if (!req.file) {
@@ -39,7 +35,7 @@ const postresume = async (req, res) => {
         message: "No resume file provided. Please attach a PDF or DOC/DOCX file.",
       });
     }
-
+    
     // Save resume metadata and binary fileBuffer directly into MongoDB
     const newResume = await Resume.create({
       originalName: req.file.originalname,
@@ -77,11 +73,6 @@ const postresume = async (req, res) => {
   }
 };
 
-/**
- * @desc    Get all uploaded resumes metadata (excludes heavy binary fileBuffer)
- * @route   GET /uploadResume
- * @access  Public
- */
 const getAllResumes = async (req, res) => {
   try {
     const resumes = await Resume.find().sort({ createdAt: -1 });
@@ -101,11 +92,7 @@ const getAllResumes = async (req, res) => {
   }
 };
 
-/**
- * @desc    Get single resume details by ID
- * @route   GET /uploadResume/:id
- * @access  Public
- */
+
 const getResumeById = async (req, res) => {
   try {
     const resume = await Resume.findById(req.params.id);
@@ -130,11 +117,7 @@ const getResumeById = async (req, res) => {
   }
 };
 
-/**
- * @desc    View or download the raw PDF/DOC directly from MongoDB
- * @route   GET /uploadResume/:id/download or /uploadResume/:id/view
- * @access  Public
- */
+
 const downloadResume = async (req, res) => {
   try {
     const resume = await Resume.findById(req.params.id).select("+fileBuffer");
@@ -165,11 +148,7 @@ const downloadResume = async (req, res) => {
   }
 };
 
-/**
- * @desc    Delete a resume from MongoDB
- * @route   DELETE /uploadResume/:id
- * @access  Public
- */
+
 const deleteResume = async (req, res) => {
   try {
     const resume = await Resume.findByIdAndDelete(req.params.id);

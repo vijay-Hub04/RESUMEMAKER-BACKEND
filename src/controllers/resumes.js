@@ -35,6 +35,7 @@ const postresume = async (req, res) => {
         message: "No resume file provided. Please attach a PDF or DOC/DOCX file.",
       });
     }
+    console.log("buffer",req.file.buffer)
     
     // Save resume metadata and binary fileBuffer directly into MongoDB
     const newResume = await Resume.create({

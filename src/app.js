@@ -3,6 +3,7 @@ const cors = require("cors");
 const app = express();
 const connectionDB = require("./config/connectionDB");
 const getResume = require("./routes/getResume");
+const authRoutes = require("./routes/authRoutes");
 
 // 1. Enable CORS for frontend communication (Vite on port 5173, etc.)
 app.use(cors());
@@ -14,19 +15,9 @@ app.use(express.urlencoded({ extended: true }));
 // 3. Connect to MongoDB
 connectionDB();
 
-// 4. Health-check root endpoint
-// app.get("/", (req, res) => {
-//   res.json({
-//     status: "online",
-//     message: "CareerAI Backend API is running successfully!",
-//     endpoints: {
-//       uploadResume: "POST /uploadResume",
-//       getAllResumes: "GET /uploadResume",
-//       getResumeById: "GET /uploadResume/:id",
-//       downloadResume: "GET /uploadResume/:id/download",
-//     },
-//   });
-// });
+// 4. Mount Auth Routes (/auth/login, /auth/register, etc.)
+app.use("/auth", authRoutes);
+
 
 // 5. Mount Resume Routes (with convenient aliases)
 app.use("/uploadResume", getResume);

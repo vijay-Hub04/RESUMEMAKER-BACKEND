@@ -35,33 +35,76 @@ const postresume = async (req, res) => {
         message: "No resume file provided. Please attach a PDF or DOC/DOCX file.",
       });
     }
-    console.log("buffer",req.file.buffer)
-    
-    // Save resume metadata and binary fileBuffer directly into MongoDB
-    const newResume = await Resume.create({
-      originalName: req.file.originalname,
-      mimeType: req.file.mimetype || "application/pdf",
-      fileSize: req.file.size,
-      fileBuffer: req.file.buffer, // Binary stored directly in MongoDB (Free!)
-      candidateInfo: {
-        name: req.body.candidateName || "",
-        email: req.body.candidateEmail || "",
-        phone: req.body.candidatePhone || "",
-      },
-      status: "uploaded",
-    });
+
+    // Extract userId from authenticated token (req.user) or request body
+    const userId = req.user?.userId || req.body.userId || null;
+    let resume = null;
+
+    if (userId) {
+      // Check if this registered user already has an active resume stored
+      resume = await Resume.findOne({ userId });
+
+      if (resume) {
+        // Replace existing resume data in MongoDB
+        resume.originalName = req.file.originalname;
+        resume.mimeType = req.file.mimetype || "application/pdf";
+        resume.fileSize = req.file.size;
+        resume.fileBuffer = req.file.buffer;
+        resume.status = "uploaded";
+        if (req.body.candidateName) resume.candidateInfo.name = req.body.candidateName;
+        if (req.body.candidateEmail) resume.candidateInfo.email = req.body.candidateEmail;
+        if (req.body.candidatePhone) resume.candidateInfo.phone = req.body.candidatePhone;
+        await resume.save();
+      } else {
+        // Create new resume for this user
+        resume = await Resume.create({
+          userId,
+          originalName: req.file.originalname,
+          mimeType: req.file.mimetype || "application/pdf",
+          fileSize: req.file.size,
+          fileBuffer: req.file.buffer,
+          candidateInfo: {
+            name: req.body.candidateName || "",
+            email: req.body.candidateEmail || "",
+            phone: req.body.candidatePhone || "",
+          },
+          status: "uploaded",
+        });
+      }
+    } else {
+      // Guest upload without account
+      resume = await Resume.create({
+        userId: null,
+        originalName: req.file.originalname,
+        mimeType: req.file.mimetype || "application/pdf",
+        fileSize: req.file.size,
+        fileBuffer: req.file.buffer,
+        candidateInfo: {
+          name: req.body.candidateName || "",
+          email: req.body.candidateEmail || "",
+          phone: req.body.candidatePhone || "",
+        },
+        status: "uploaded",
+      });
+    }
 
     return res.status(201).json({
       success: true,
       message: "Resume successfully uploaded and stored in MongoDB!",
       data: {
-        id: newResume._id,
-        originalName: newResume.originalName,
-        fileSize: newResume.fileSize,
-        mimeType: newResume.mimeType,
-        uploadedAt: newResume.createdAt,
-        downloadUrl: `/uploadResume/${newResume._id}/download`,
-        viewUrl: `/uploadResume/${newResume._id}/view`,
+        id: resume._id,
+        _id: resume._id,
+        fileName: resume.originalName,
+        originalName: resume.originalName,
+        fileSize: resume.fileSize,
+        mimeType: resume.mimeType,
+        fileType: resume.mimeType,
+        uploadedAt: resume.updatedAt || resume.createdAt,
+        userId: resume.userId,
+        atsScore: resume.atsScore,
+        downloadUrl: `/uploadResume/${resume._id}/download`,
+        viewUrl: `/uploadResume/${resume._id}/view`,
+        storedInMongo: true,
       },
     });
   } catch (error) {
@@ -174,11 +217,64 @@ const deleteResume = async (req, res) => {
   }
 };
 
+/**
+ * GET /uploadResume/my-resume
+ * Retrieves active resume associated with the authenticated user
+ */
+const getMyResume = async (req, res) => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required to fetch user resume.",
+      });
+    }
+
+    const resume = await Resume.findOne({ userId }).sort({ updatedAt: -1 });
+
+    if (!resume) {
+      return res.status(200).json({
+        success: true,
+        data: null,
+        message: "No resume found for this user in MongoDB.",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        id: resume._id,
+        _id: resume._id,
+        fileName: resume.originalName,
+        originalName: resume.originalName,
+        fileSize: resume.fileSize,
+        mimeType: resume.mimeType,
+        fileType: resume.mimeType,
+        uploadedAt: resume.updatedAt || resume.createdAt,
+        userId: resume.userId,
+        atsScore: resume.atsScore,
+        downloadUrl: `/uploadResume/${resume._id}/download`,
+        viewUrl: `/uploadResume/${resume._id}/view`,
+        storedInMongo: true,
+      },
+    });
+  } catch (error) {
+    console.error("Error retrieving user resume:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error retrieving user resume.",
+      error: error.message,
+    });
+  }
+};
+
 module.exports = {
   upload,
   postresume,
   getAllResumes,
   getResumeById,
+  getMyResume,
   downloadResume,
   deleteResume,
 };

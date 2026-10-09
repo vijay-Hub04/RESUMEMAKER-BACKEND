@@ -2,6 +2,27 @@ const crypto = require("crypto");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
+const Resume = require("../models/Resume");
+
+// Helper to format resume data for frontend consumption
+const formatResumeResponse = (resumeDoc) => {
+  if (!resumeDoc) return null;
+  return {
+    id: resumeDoc._id,
+    _id: resumeDoc._id,
+    fileName: resumeDoc.originalName,
+    originalName: resumeDoc.originalName,
+    fileSize: resumeDoc.fileSize,
+    mimeType: resumeDoc.mimeType,
+    fileType: resumeDoc.mimeType,
+    uploadedAt: resumeDoc.updatedAt || resumeDoc.createdAt,
+    userId: resumeDoc.userId,
+    atsScore: resumeDoc.atsScore,
+    downloadUrl: `/uploadResume/${resumeDoc._id}/download`,
+    viewUrl: `/uploadResume/${resumeDoc._id}/view`,
+    storedInMongo: true,
+  };
+};
 
 // JWT secret key (falls back to secure default if not set in .env)
 const JWT_SECRET = process.env.JWT_SECRET || "careerai_jwt_super_secret_2026_key";
@@ -176,10 +197,15 @@ const loginUser = async (req, res) => {
       createdAt: user.createdAt,
     };
 
+    // Check if this user has an uploaded resume in MongoDB
+    const existingResume = await Resume.findOne({ userId: user._id }).sort({ updatedAt: -1 });
+    const resumeData = formatResumeResponse(existingResume);
+
     return res.status(200).json({
       success: true,
       message: "Signed in successfully!",
       user: userResponse,
+      resume: resumeData,
       token,
     });
   } catch (error) {
@@ -213,6 +239,9 @@ const getMe = async (req, res) => {
       });
     }
 
+    const existingResume = await Resume.findOne({ userId: user._id }).sort({ updatedAt: -1 });
+    const resumeData = formatResumeResponse(existingResume);
+
     return res.status(200).json({
       success: true,
       user: {
@@ -225,6 +254,7 @@ const getMe = async (req, res) => {
         location: user.location,
         createdAt: user.createdAt,
       },
+      resume: resumeData,
     });
   } catch (error) {
     return res.status(401).json({

@@ -31,6 +31,12 @@ const resumeSchema = new mongoose.Schema(
       email: { type: String, default: "" },
       phone: { type: String, default: "" },
     },
+    // Optional reference to authenticated User UUID
+    userId: {
+      type: String,
+      default: null,
+      index: true,
+    },
     atsScore: {
       type: Number,
       default: null,

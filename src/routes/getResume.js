@@ -5,9 +5,11 @@ const {
   postresume,
   getAllResumes,
   getResumeById,
+  getMyResume,
   downloadResume,
   deleteResume,
 } = require("../controllers/resumes");
+const { optionalAuth, requireAuth } = require("../middlewares/authMiddleware");
 
 // Custom middleware to support both field names ('resume' or 'file')
 const handleUpload = (req, res, next) => {
@@ -37,9 +39,12 @@ const handleUpload = (req, res, next) => {
   });
 };
 
-// POST /uploadResume - Upload and store resume directly in MongoDB
-router.post("/", handleUpload, postresume);
-router.post("/upload", handleUpload, postresume);
+// POST /uploadResume - Upload and store resume directly in MongoDB (supports both guest and authenticated users)
+router.post("/", optionalAuth, handleUpload, postresume);
+router.post("/upload", optionalAuth, handleUpload, postresume);
+
+// GET /uploadResume/my-resume - Get active resume for logged in user (MUST be before /:id)
+router.get("/my-resume", requireAuth, getMyResume);
 
 // GET /uploadResume - Get list of all uploaded resumes
 router.get("/", getAllResumes);

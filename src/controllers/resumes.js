@@ -217,10 +217,7 @@ const deleteResume = async (req, res) => {
   }
 };
 
-/**
- * GET /uploadResume/my-resume
- * Retrieves active resume associated with the authenticated user
- */
+
 const getMyResume = async (req, res) => {
   try {
     const userId = req.user?.userId;

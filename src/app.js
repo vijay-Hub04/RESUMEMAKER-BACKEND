@@ -21,9 +21,7 @@ app.use("/auth", authRoutes);
 
 // 5. Mount Resume Routes (with convenient aliases)
 app.use("/uploadResume", getResume);
-// app.use("/api/resume", getResume);
-// app.use("/resume", getResume);
-// app.use("/api/uploadResume", getResume);
+app.use("/resume", getResume);
 
 // 6. 404 Not Found Handler
 app.use((req, res) => {

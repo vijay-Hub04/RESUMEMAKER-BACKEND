@@ -1,5 +1,8 @@
 const multer = require("multer");
+const mongoose = require("mongoose");
 const Resume = require("../models/Resume");
+const { extractTextFromBuffer } = require("../utils/textExtractor");
+const { calculateATSScore } = require("../utils/atsCalculator");
 
 // Configure Multer to store uploaded file in memory as a Buffer
 const storage = multer.memoryStorage();
@@ -51,6 +54,12 @@ const postresume = async (req, res) => {
         resume.fileSize = req.file.size;
         resume.fileBuffer = req.file.buffer;
         resume.status = "uploaded";
+        resume.atsScore = null;
+        resume.atsResult = null;
+        resume.parsedText = "";
+        if (!resume.candidateInfo) {
+          resume.candidateInfo = { name: "", email: "", phone: "" };
+        }
         if (req.body.candidateName) resume.candidateInfo.name = req.body.candidateName;
         if (req.body.candidateEmail) resume.candidateInfo.email = req.body.candidateEmail;
         if (req.body.candidatePhone) resume.candidateInfo.phone = req.body.candidatePhone;
@@ -251,6 +260,7 @@ const getMyResume = async (req, res) => {
         uploadedAt: resume.updatedAt || resume.createdAt,
         userId: resume.userId,
         atsScore: resume.atsScore,
+        atsResult: resume.atsResult,
         downloadUrl: `/uploadResume/${resume._id}/download`,
         viewUrl: `/uploadResume/${resume._id}/view`,
         storedInMongo: true,
@@ -266,12 +276,97 @@ const getMyResume = async (req, res) => {
   }
 };
 
+/**
+ * POST /uploadResume/:id/analyze or /uploadResume/my-resume/analyze
+ * Extracts text from BSON fileBuffer in MongoDB, executes ATS scoring engine,
+ * persists the results in MongoDB, and returns the full ATS report.
+ */
+const analyzeResumeATS = async (req, res) => {
+  try {
+    const rawId = req.params.id || req.body.id || req.body.resumeId;
+    let resume = null;
+
+    // 1. Look up by ObjectId if a valid ID was specified
+    if (rawId && rawId !== "my-resume" && rawId !== "analyze" && rawId !== "analyze-general") {
+      if (mongoose.isValidObjectId(rawId)) {
+        resume = await Resume.findById(rawId).select("+fileBuffer +parsedText");
+      }
+    }
+
+    // 2. If no resume found or route is user-centric, look up active resume of authenticated candidate
+    if (!resume && req.user?.userId) {
+      resume = await Resume.findOne({ userId: req.user.userId })
+        .sort({ updatedAt: -1 })
+        .select("+fileBuffer +parsedText");
+    }
+
+    if (!resume) {
+      return res.status(404).json({
+        success: false,
+        message: "Resume not found with the specified ID or candidate account.",
+      });
+    }
+
+    if (!resume.fileBuffer || resume.fileBuffer.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Resume binary data not found in database to evaluate.",
+      });
+    }
+
+    // 1. Extract text from buffer (PDF, DOCX, or fallback)
+    const extraction = await extractTextFromBuffer(resume.fileBuffer, resume.mimeType);
+    const resumeText = extraction.text || "";
+    const numPages = extraction.numPages || 1;
+
+    // 2. Run ATS Scoring Engine
+    const atsResult = calculateATSScore(resumeText, numPages, resume.fileSize);
+
+    // 3. Save calculated score and details in MongoDB
+    resume.atsScore = atsResult.score;
+    resume.atsResult = atsResult;
+    resume.parsedText = resumeText;
+    resume.status = "analyzed";
+    await resume.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "ATS analysis calculated successfully!",
+      data: {
+        id: resume._id,
+        _id: resume._id,
+        fileName: resume.originalName,
+        score: atsResult.score,
+        status: atsResult.status,
+        summary: atsResult.summary,
+        formatting: atsResult.formatting,
+        skillsAnalysis: atsResult.skillsAnalysis,
+        strengths: atsResult.strengths,
+        weaknesses: atsResult.weaknesses,
+        recommendations: atsResult.recommendations,
+        analyzedAt: new Date().toISOString(),
+        extractionMethod: extraction.method,
+        meta: atsResult.meta,
+        isSimulated: false,
+      },
+    });
+  } catch (error) {
+    console.error("Error analyzing resume ATS:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error calculating ATS score from resume buffer.",
+      error: error.message,
+    });
+  }
+};
+
 module.exports = {
   upload,
   postresume,
   getAllResumes,
   getResumeById,
   getMyResume,
+  analyzeResumeATS,
   downloadResume,
   deleteResume,
 };

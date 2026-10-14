@@ -41,6 +41,15 @@ const resumeSchema = new mongoose.Schema(
       type: Number,
       default: null,
     },
+    atsResult: {
+      type: Object,
+      default: null,
+    },
+    parsedText: {
+      type: String,
+      select: false,
+      default: "",
+    },
   },
   {
     timestamps: true, // Automatically creates createdAt and updatedAt

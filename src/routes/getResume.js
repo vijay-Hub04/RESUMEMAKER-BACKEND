@@ -6,6 +6,7 @@ const {
   getAllResumes,
   getResumeById,
   getMyResume,
+  analyzeResumeATS,
   downloadResume,
   deleteResume,
 } = require("../controllers/resumes");
@@ -46,8 +47,18 @@ router.post("/upload", optionalAuth, handleUpload, postresume);
 // GET /uploadResume/my-resume - Get active resume for logged in user (MUST be before /:id)
 router.get("/my-resume", requireAuth, getMyResume);
 
+// POST /uploadResume/my-resume/analyze - Analyze logged-in user's active resume
+router.post("/my-resume/analyze", requireAuth, analyzeResumeATS);
+
+// POST /uploadResume/analyze-general & /analyze - Analyze resume from payload or session
+router.post("/analyze-general", optionalAuth, analyzeResumeATS);
+router.post("/analyze", optionalAuth, analyzeResumeATS);
+
 // GET /uploadResume - Get list of all uploaded resumes
 router.get("/", getAllResumes);
+
+// POST /uploadResume/:id/analyze - Calculate ATS score from stored binary buffer in MongoDB
+router.post("/:id/analyze", optionalAuth, analyzeResumeATS);
 
 // GET /uploadResume/:id - Get resume metadata by ID
 router.get("/:id", getResumeById);

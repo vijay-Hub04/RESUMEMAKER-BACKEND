@@ -4,6 +4,7 @@ const app = express();
 const connectionDB = require("./config/connectionDB");
 const getResume = require("./routes/getResume");
 const authRoutes = require("./routes/authRoutes");
+const jobRoutes = require("./routes/jobRoutes");
 
 // 1. Enable CORS for frontend communication (Vite on port 5173, etc.)
 app.use(cors());
@@ -18,12 +19,14 @@ connectionDB();
 // 4. Mount Auth Routes (/auth/login, /auth/register, etc.)
 app.use("/auth", authRoutes);
 
-
 // 5. Mount Resume Routes (with convenient aliases)
 app.use("/uploadResume", getResume);
 app.use("/resume", getResume);
 
-// 6. 404 Not Found Handler
+// 6. Mount Job Routes (/jobs, /jobs/:id, /jobs/:id/match, /jobs/:id/apply)
+app.use("/jobs", jobRoutes);
+
+// 7. 404 Not Found Handler
 app.use((req, res) => {
   res.status(404).json({
     success: false,

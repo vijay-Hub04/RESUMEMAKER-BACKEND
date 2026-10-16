@@ -18,6 +18,7 @@ const formatResumeResponse = (resumeDoc) => {
     uploadedAt: resumeDoc.updatedAt || resumeDoc.createdAt,
     userId: resumeDoc.userId,
     atsScore: resumeDoc.atsScore,
+    atsResult: resumeDoc.atsResult,
     downloadUrl: `/uploadResume/${resumeDoc._id}/download`,
     viewUrl: `/uploadResume/${resumeDoc._id}/view`,
     storedInMongo: true,
@@ -98,7 +99,29 @@ const registerUser = async (req, res) => {
 
     await newUser.save();
 
-    // 8. Generate JWT token
+    // 8. Link guest resume if resumeId is provided or an unassigned resume exists
+    let userResume = null;
+    const candidateResumeId = req.body.resumeId;
+    const mongoose = require("mongoose");
+    if (candidateResumeId && mongoose.isValidObjectId(candidateResumeId)) {
+      userResume = await Resume.findOne({ _id: candidateResumeId, userId: null });
+      if (userResume) {
+        userResume.userId = newUser._id;
+        await userResume.save();
+      }
+    }
+    if (!userResume) {
+      // Adopt unlinked resume uploaded recently (within 2 hours)
+      const recentUnassigned = await Resume.findOne({ userId: null }).sort({ updatedAt: -1 });
+      if (recentUnassigned && (Date.now() - new Date(recentUnassigned.createdAt).getTime() < 7200000)) {
+        recentUnassigned.userId = newUser._id;
+        await recentUnassigned.save();
+        userResume = recentUnassigned;
+      }
+    }
+    const resumeData = formatResumeResponse(userResume);
+
+    // 9. Generate JWT token
     const token = jwt.sign(
       { userId: newUser._id, email: newUser.email },
       JWT_SECRET,
@@ -120,6 +143,7 @@ const registerUser = async (req, res) => {
       success: true,
       message: "Account created successfully!",
       user: userResponse,
+      resume: resumeData,
       token,
     });
   } catch (error) {
@@ -134,7 +158,7 @@ const registerUser = async (req, res) => {
 
 const loginUser = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, resumeId } = req.body;
 
     // 1. Check required inputs
     if (!email || !email.trim()) {
@@ -184,7 +208,6 @@ const loginUser = async (req, res) => {
       JWT_SECRET,
       { expiresIn: "7d" }
     );
-    console.log("token", token)
 
     const userResponse = {
       id: user._id,
@@ -197,8 +220,31 @@ const loginUser = async (req, res) => {
       createdAt: user.createdAt,
     };
 
-    // Check if this user has an uploaded resume in MongoDB
-    const existingResume = await Resume.findOne({ userId: user._id }).sort({ updatedAt: -1 });
+    // 6. Connect candidate's resume: check if new guest resume was uploaded before login
+    let existingResume = null;
+    const mongoose = require("mongoose");
+    if (resumeId && mongoose.isValidObjectId(resumeId)) {
+      const guestResume = await Resume.findOne({ _id: resumeId, userId: null });
+      if (guestResume) {
+        guestResume.userId = user._id;
+        await guestResume.save();
+        existingResume = guestResume;
+      }
+    }
+
+    if (!existingResume) {
+      existingResume = await Resume.findOne({ userId: user._id }).sort({ updatedAt: -1 });
+    }
+
+    if (!existingResume) {
+      const recentUnassigned = await Resume.findOne({ userId: null }).sort({ updatedAt: -1 });
+      if (recentUnassigned && (Date.now() - new Date(recentUnassigned.createdAt).getTime() < 7200000)) {
+        recentUnassigned.userId = user._id;
+        await recentUnassigned.save();
+        existingResume = recentUnassigned;
+      }
+    }
+
     const resumeData = formatResumeResponse(existingResume);
 
     return res.status(200).json({
@@ -264,8 +310,58 @@ const getMe = async (req, res) => {
   }
 };
 
+const updateProfile = async (req, res) => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required to update profile.",
+      });
+    }
+
+    const { name, title, location } = req.body;
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found.",
+      });
+    }
+
+    if (name && name.trim()) user.name = name.trim();
+    if (title !== undefined) user.title = title.trim();
+    if (location !== undefined) user.location = location.trim();
+
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Profile updated successfully!",
+      user: {
+        id: user._id,
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        avatar: user.avatar,
+        title: user.title,
+        location: user.location,
+        createdAt: user.createdAt,
+      },
+    });
+  } catch (error) {
+    console.error("Profile update error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Server error while updating profile.",
+    });
+  }
+};
+
 module.exports = {
   registerUser,
   loginUser,
   getMe,
+  updateProfile,
 };
+

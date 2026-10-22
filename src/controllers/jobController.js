@@ -37,7 +37,7 @@ async function getCandidateResume(req) {
  */
 const getAllJobs = async (req, res) => {
   try {
-    const { search, location, type, experience } = req.query;
+    const { search, company, location, type, experience } = req.query;
 
     // 1. Fetch candidate's active resume if available
     const resume = await getCandidateResume(req);
@@ -46,6 +46,7 @@ const getAllJobs = async (req, res) => {
     // 2. Fetch live real jobs
     const jobs = await searchLiveJobs({
       search,
+      company,
       location,
       type,
       experience,

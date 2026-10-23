@@ -1,14 +1,26 @@
 const mongoose = require("mongoose");
 require("dotenv").config();
 
+function sanitizeMongoUrl(url) {
+  let cleaned = (url || "").trim().replace(/^["']|["']$/g, "").trim();
+  // Safely auto-encode special characters like '@' in password if unencoded
+  const match = cleaned.match(/^(mongodb(?:\+srv)?:\/\/)([^:]+):(.+)@([^\/@]+)(\/.*)?$/);
+  if (match) {
+    const [, protocol, username, rawPassword, host, rest = ""] = match;
+    const encodedPassword = encodeURIComponent(decodeURIComponent(rawPassword));
+    cleaned = `${protocol}${username}:${encodedPassword}@${host}${rest}`;
+  }
+  return cleaned;
+}
+
 async function connectionDB() {
   const rawUrl = process.env.MONGO_URL || "mongodb://127.0.0.1:27017/resumemaker";
-  const mongoUrl = rawUrl.trim().replace(/^["']|["']$/g, "").trim();
+  const mongoUrl = sanitizeMongoUrl(rawUrl);
 
   try {
-    console.log("⏳ Connecting to MongoDB...");
+    console.log("⏳ Connecting to MongoDB Atlas...");
     await mongoose.connect(mongoUrl, {
-      serverSelectionTimeoutMS: 5000,
+      serverSelectionTimeoutMS: 8000,
     });
     console.log(`✅ Successfully connected to MongoDB database: "${mongoose.connection.name}"`);
   } catch (err) {

@@ -32,9 +32,64 @@ const JWT_SECRET = process.env.JWT_SECRET || "careerai_jwt_super_secret_2026_key
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 
+const mongoose = require("mongoose");
+
+// Sanitize internal errors so raw database details/syntax never leak to client
+const sanitizeAuthError = (error, defaultMsg = "An unexpected error occurred. Please try again.") => {
+  if (!error) return defaultMsg;
+  const msg = String(error.message || error);
+
+  // Mongoose buffering, connection timeouts, network issues
+  if (
+    msg.includes("buffering timed out") ||
+    msg.includes("findOne") ||
+    msg.includes("timed out") ||
+    msg.includes("MongoServerSelectionError") ||
+    msg.includes("MongoNetworkError") ||
+    msg.includes("failed to connect") ||
+    msg.includes("ECONNREFUSED") ||
+    msg.includes("querySrv") ||
+    error.name === "MongooseError" ||
+    error.name === "MongoServerSelectionError" ||
+    error.name === "MongoNetworkError"
+  ) {
+    return "Database service is temporarily unavailable. Please try again shortly.";
+  }
+
+  // Duplicate key (email already in use)
+  if (error.code === 11000 || msg.includes("E11000") || msg.includes("duplicate key")) {
+    return "An account with this email address already exists. Please sign in.";
+  }
+
+  // Credential mismatch
+  if (msg.includes("Invalid email or password") || msg.includes("credentials")) {
+    return "Invalid email or password. Please verify your credentials.";
+  }
+
+  // Known validation messages
+  if (
+    msg.includes("Full name is required") ||
+    msg.includes("Email address is required") ||
+    msg.includes("valid email") ||
+    msg.includes("at least 6 characters")
+  ) {
+    return msg;
+  }
+
+  return defaultMsg;
+};
+
 const registerUser = async (req, res) => {
   try {
     const { name, email, password } = req.body;
+
+    // Check DB readiness to fail-fast cleanly instead of buffering for 10 seconds
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({
+        success: false,
+        message: "Database service is initializing. Please try again in a few moments.",
+      });
+    }
 
     // 1. Check required fields
     if (!name || !name.trim()) {
@@ -102,7 +157,6 @@ const registerUser = async (req, res) => {
     // 8. Link guest resume if resumeId is provided or an unassigned resume exists
     let userResume = null;
     const candidateResumeId = req.body.resumeId;
-    const mongoose = require("mongoose");
     if (candidateResumeId && mongoose.isValidObjectId(candidateResumeId)) {
       userResume = await Resume.findOne({ _id: candidateResumeId, userId: null });
       if (userResume) {
@@ -148,17 +202,28 @@ const registerUser = async (req, res) => {
     });
   } catch (error) {
     console.error("Register Error:", error);
-    return res.status(500).json({
+    const safeMsg = sanitizeAuthError(error, "Unable to create account. Please try again.");
+    const statusCode = safeMsg.includes("Database") ? 503 : 500;
+    return res.status(statusCode).json({
       success: false,
-      message: error.message || "Server error while registering user.",
+      message: safeMsg,
     });
   }
 };
 
 
+
 const loginUser = async (req, res) => {
   try {
     const { email, password, resumeId } = req.body;
+
+    // Check DB readiness to fail-fast cleanly instead of buffering for 10 seconds
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({
+        success: false,
+        message: "Database service is initializing. Please try again in a few moments.",
+      });
+    }
 
     // 1. Check required inputs
     if (!email || !email.trim()) {
@@ -222,7 +287,6 @@ const loginUser = async (req, res) => {
 
     // 6. Connect candidate's resume: check if new guest resume was uploaded before login
     let existingResume = null;
-    const mongoose = require("mongoose");
     if (resumeId && mongoose.isValidObjectId(resumeId)) {
       const guestResume = await Resume.findOne({ _id: resumeId, userId: null });
       if (guestResume) {
@@ -256,12 +320,15 @@ const loginUser = async (req, res) => {
     });
   } catch (error) {
     console.error("Login Error:", error);
-    return res.status(500).json({
+    const safeMsg = sanitizeAuthError(error, "Unable to sign in. Please try again.");
+    const statusCode = safeMsg.includes("Database") ? 503 : 500;
+    return res.status(statusCode).json({
       success: false,
-      message: error.message || "Server error while signing in.",
+      message: safeMsg,
     });
   }
 };
+
 
 
 const getMe = async (req, res) => {
@@ -351,9 +418,10 @@ const updateProfile = async (req, res) => {
     });
   } catch (error) {
     console.error("Profile update error:", error);
+    const safeMsg = sanitizeAuthError(error, "Unable to update profile. Please try again.");
     return res.status(500).json({
       success: false,
-      message: error.message || "Server error while updating profile.",
+      message: safeMsg,
     });
   }
 };
